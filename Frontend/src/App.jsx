@@ -1,8 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Icon,
-} from "./shared";
+import { Icon } from "./shared";
 
 const CROP_OPTIONS = [
   { value: "cotton", label: "Cotton", icon: "leaf" },
@@ -10,22 +8,41 @@ const CROP_OPTIONS = [
 ];
 
 const COTTON_GROWTH_STAGES = [
-  "Small Plant",
-  "Leaf Growth",
-  "Bud Formation",
-  "Flowering",
-  "Boll Starting",
-  "Boll Maturity",
+  { label: "Small Plant", image: "/help-images/Cotton/Small Plant.jpg" },
+  { label: "Leaf Growth", image: "/help-images/Cotton/Leaf Growth.webp" },
+  { label: "Bud Formation", image: "/help-images/Cotton/Bud Formation.jpg" },
+  { label: "Flowering", image: "/help-images/Cotton/Flowering.webp" },
+  { label: "Boll Starting", image: "/help-images/Cotton/Boll Starting.webp" },
+  { label: "Boll Maturity", image: "/help-images/Cotton/Boll Maturity.webp" },
 ];
 
 const WHEAT_GROWTH_STAGES = [
-  "Small Plant",
-  "Tillering",
-  "Stem Growth",
-  "Booting",
-  "Ear Formation / Flowering",
-  "Grain Filling",
-  "Harvest Ready",
+  { label: "Small Plant", image: "/help-images/Wheat/Small Plant.jpg" },
+  { label: "Tillering", image: "/help-images/Wheat/Tillering.png" },
+  { label: "Stem Growth", image: "/help-images/Wheat/Stem Growth.png" },
+  { label: "Booting", image: "/help-images/Wheat/Booting.png" },
+  {
+    label: "Ear Formation / Flowering",
+    image: "/help-images/Wheat/Ear Formation  Flowering.jpg",
+  },
+  { label: "Grain Filling", image: "/help-images/Wheat/Grain Filling.jpg" },
+  { label: "Harvest Ready", image: "/help-images/Wheat/Harvest Ready.webp" },
+];
+
+const SEVERITY_OPTIONS = [
+  {
+    value: "Mild",
+    description: "Only a few small spots or early symptoms are visible",
+  },
+  {
+    value: "Moderate",
+    description:
+      "Symptoms are clearly visible on a noticeable part of the leaf",
+  },
+  {
+    value: "Severe",
+    description: "A large part of the leaf is affected, dried, or damaged",
+  },
 ];
 
 const API_BASE_URL = (
@@ -50,6 +67,8 @@ export default function App() {
   const [llmError, setLlmError] = useState("");
   const [llmLoading, setLlmLoading] = useState(false);
 
+  const [stageModalOpen, setStageModalOpen] = useState(false);
+
   // Ref to measure form height and constrain preview card
   const formRef = useRef(null);
   const panelRef = useRef(null);
@@ -58,12 +77,12 @@ export default function App() {
     function syncHeight() {
       if (formRef.current && panelRef.current) {
         const h = formRef.current.offsetHeight;
-        panelRef.current.style.setProperty('--form-height', `${h}px`);
+        panelRef.current.style.setProperty("--form-height", `${h}px`);
       }
     }
     syncHeight();
-    window.addEventListener('resize', syncHeight);
-    return () => window.removeEventListener('resize', syncHeight);
+    window.addEventListener("resize", syncHeight);
+    return () => window.removeEventListener("resize", syncHeight);
   });
 
   // Auto-navigate to report page when LLM result is ready
@@ -250,7 +269,8 @@ export default function App() {
           </div>
           <h1>Plant Disease Detection & Remedie Recommended</h1>
           <p className="hero-subtitle">
-            Upload a clear leaf photo and choose the crop model. The system predicts the disease class and confidence in seconds.
+            Upload a clear leaf photo and choose the crop model. The system
+            predicts the disease class and confidence in seconds.
           </p>
         </section>
 
@@ -345,40 +365,67 @@ export default function App() {
               </div>
 
               <div className="form-section">
-                <label htmlFor="growthStage" className="form-label">
-                  Crop Growth Stage
-                </label>
-                <select
-                  id="growthStage"
-                  value={growthStage}
-                  className="form-select"
-                  onChange={(e) => setGrowthStage(e.target.value)}
+                <label className="form-label">Crop Growth Stage</label>
+                <button
+                  type="button"
+                  className={`growth-stage-trigger${growthStage ? " has-value" : ""}`}
+                  disabled={!crop}
+                  onClick={() => crop && setStageModalOpen(true)}
                 >
-                  <option value="">Select growth stage</option>
-                  {currentGrowthStages.map((stage) => (
-                    <option key={stage} value={stage}>
-                      {stage}
-                    </option>
-                  ))}
-                </select>
+                  {!crop
+                    ? "Select a crop first"
+                    : growthStage || "Select growth stage"}
+                </button>
               </div>
             </div>
 
             <div className="form-section">
-              <label htmlFor="severityLevel" className="form-label">
-                Disease Severity Level
-              </label>
-              <select
-                id="severityLevel"
-                value={severityLevel}
-                className="form-select"
-                onChange={(e) => setSeverityLevel(e.target.value)}
+              <label className="form-label">Disease Severity Level</label>
+              <div
+                className="severity-pills"
+                role="radiogroup"
+                aria-label="Disease Severity Level"
               >
-                <option value="">Select severity</option>
-                <option value="Mild">Mild (Early symptoms)</option>
-                <option value="Moderate">Moderate (Visible damage)</option>
-                <option value="Severe">Severe (Extensive damage)</option>
-              </select>
+                {SEVERITY_OPTIONS.map((opt, idx) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`severity-pill${severityLevel === opt.value ? " active" : ""}`}
+                    onClick={() => setSeverityLevel(opt.value)}
+                    role="radio"
+                    aria-checked={severityLevel === opt.value}
+                    title={opt.description}
+                    tabIndex={
+                      severityLevel === opt.value ||
+                      (!severityLevel && idx === 0)
+                        ? 0
+                        : -1
+                    }
+                    onKeyDown={(e) => {
+                      let next = -1;
+                      if (e.key === "ArrowRight" || e.key === "ArrowDown")
+                        next = (idx + 1) % SEVERITY_OPTIONS.length;
+                      else if (e.key === "ArrowLeft" || e.key === "ArrowUp")
+                        next =
+                          (idx - 1 + SEVERITY_OPTIONS.length) %
+                          SEVERITY_OPTIONS.length;
+                      if (next >= 0) {
+                        e.preventDefault();
+                        setSeverityLevel(SEVERITY_OPTIONS[next].value);
+                        e.currentTarget.parentElement.children[next]?.focus();
+                      }
+                    }}
+                  >
+                    <span className="severity-pill-label">{opt.value}</span>
+                    <span className="severity-pill-desc">
+                      {opt.description}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="input-hint">
+                Choose the level closest to your uploaded leaf image.
+              </p>
             </div>
 
             <button
@@ -417,12 +464,73 @@ export default function App() {
           <div className="loader-overlay">
             <div className="loader-card">
               <div className="spinner large" />
-              <h3>{loading ? "Analyzing Image..." : "Generating Detailed Report..."}</h3>
-              <p>{loading ? "Identifying the disease from the leaf image" : `Preparing advisory for ${farmSize} acres`}</p>
+              <h3>
+                {loading
+                  ? "Analyzing Image..."
+                  : "Generating Detailed Report..."}
+              </h3>
+              <p>
+                {loading
+                  ? "Identifying the disease from the leaf image"
+                  : `Preparing advisory for ${farmSize} acres`}
+              </p>
             </div>
           </div>
         )}
       </main>
+
+      {/* Growth Stage Selection Modal */}
+      {stageModalOpen && (
+        <div
+          className="gs-modal-backdrop"
+          onClick={() => setStageModalOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setStageModalOpen(false);
+          }}
+        >
+          <div
+            className="gs-modal"
+            role="dialog"
+            aria-label={`Select ${crop === "cotton" ? "Cotton" : "Wheat"} Growth Stage`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="gs-modal-header">
+              <h3>
+                Select {crop === "cotton" ? "Cotton" : "Wheat"} Growth Stage
+              </h3>
+              <button
+                type="button"
+                className="gs-modal-close"
+                onClick={() => setStageModalOpen(false)}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="gs-modal-grid">
+              {currentGrowthStages.map((stage) => (
+                <button
+                  key={stage.label}
+                  type="button"
+                  className={`growth-stage-card${growthStage === stage.label ? " active" : ""}`}
+                  onClick={() => {
+                    setGrowthStage(stage.label);
+                    setStageModalOpen(false);
+                  }}
+                >
+                  <img
+                    src={stage.image}
+                    alt={stage.label}
+                    className="growth-stage-img"
+                    loading="lazy"
+                  />
+                  <span className="growth-stage-name">{stage.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

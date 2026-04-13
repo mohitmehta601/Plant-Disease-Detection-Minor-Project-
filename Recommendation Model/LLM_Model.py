@@ -42,9 +42,17 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from langsmith import traceable
-from langsmith.wrappers import wrap_openai
-from openai import AsyncOpenAI
+import httpx
+
+# LangSmith tracing – import conditionally so the app works without it
+try:
+    from langsmith import traceable
+except ImportError:  # pragma: no cover
+    def traceable(**_kw):  # type: ignore[misc]
+        """No-op decorator when langsmith is not installed."""
+        def _decorator(fn):
+            return fn
+        return _decorator
 
 # Load variables from <project-root>/.env (or any parent .env)
 _ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
@@ -438,9 +446,6 @@ async def generate_detailed_recommendation(
     if recommendation_data is None:
         recommendation_data = {}
 
-    # wrap_openai adds LangSmith tracing to every API call when tracing is enabled
-    client = wrap_openai(AsyncOpenAI(api_key=_OPENAI_API_KEY))
-
     user_prompt = _build_user_prompt(
         crop=crop,
         disease=disease,
@@ -451,22 +456,42 @@ async def generate_detailed_recommendation(
         recommendation_data=recommendation_data,
     )
 
+    headers = {
+        "Authorization": f"Bearer {_OPENAI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": _MODEL,
+        "messages": [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user",   "content": user_prompt},
+        ],
+        "temperature": 0.4,
+        "max_tokens": 3000,
+        "response_format": {"type": "json_object"},
+    }
+
     try:
-        response = await client.chat.completions.create(
-            model=_MODEL,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user",   "content": user_prompt},
-            ],
-            temperature=0.4,
-            max_tokens=3000,
-            response_format={"type": "json_object"},
-        )
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+            resp.raise_for_status()
+            response_data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        raise RuntimeError(
+            f"OpenAI API call failed (HTTP {exc.response.status_code}): "
+            f"{exc.response.text[:500]}"
+        ) from exc
     except Exception as exc:
         raise RuntimeError(f"OpenAI API call failed: {exc}") from exc
 
-    raw_text = (response.choices[0].message.content or "").strip()
-    tokens   = response.usage.total_tokens if response.usage else 0
+    raw_text = (response_data["choices"][0]["message"]["content"] or "").strip()
+    usage = response_data.get("usage", {})
+    tokens = usage.get("total_tokens", 0)
+    model_used = response_data.get("model", _MODEL)
 
     try:
         parsed: dict[str, Any] = json.loads(raw_text)
@@ -492,7 +517,7 @@ async def generate_detailed_recommendation(
         "remedy_explanation":  _to_json_str(parsed["remedy_explanation"]),
         "application_guide":   _to_json_str(parsed["application_guide"]),
         "cost_analysis":       _format_cost_analysis(parsed["cost_analysis"]),
-        "model_used":          response.model,
+        "model_used":          model_used,
         "tokens_used":         tokens,
     }
 
